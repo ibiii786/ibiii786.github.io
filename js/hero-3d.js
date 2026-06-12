@@ -1,7 +1,7 @@
 // ==========================================================================
-// Hero 3D — "Observation Apparatus"
-// Layered translucent shells around a distorted glowing core,
-// drifting particle field, subtle parallax on pointer move.
+// Hero 3D — "Aurora Nebula"
+// A luminous morphing blob using standard Three.js materials (no custom shaders)
+// with orbiting orbs and cosmic particles. Mouse-reactive parallax.
 // ==========================================================================
 
 (function () {
@@ -11,18 +11,24 @@
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let scene, camera, renderer, clock, sceneGroup;
-  let core, shells = [], particles;
+  let blobGroup, orbs = [], particles;
   let pointerX = 0, pointerY = 0;
   let targetRotX = 0, targetRotY = 0;
+  let smoothRotX = 0, smoothRotY = 0;
+  let scrollY = 0, targetScrollY = 0;
 
-  const ACCENT = new THREE.Color(0x5EEAD4);
-  const ACCENT_DIM = new THREE.Color(0x2D5A54);
-  const BONE = new THREE.Color(0xE8E6DF);
+  // Colors
+  const COL_VIOLET = 0xC084FC;
+  const COL_ROSE = 0xF0ABFC;
+  const COL_WARM = 0xFBB8AC;
+  const COL_DEEP = 0x7C3AED;
+  const COL_TEAL = 0x67E8F9;
 
   init();
 
   function init() {
     scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x08060E, 0.06);
 
     camera = new THREE.PerspectiveCamera(
       42,
@@ -30,26 +36,30 @@
       0.1,
       100
     );
-    camera.position.set(0, 0, 9);
+    camera.position.set(0, 0, 10);
 
     sceneGroup = new THREE.Group();
-    sceneGroup.position.set(2.6, -0.3, 0);
-    sceneGroup.scale.setScalar(0.72);
+    sceneGroup.position.set(2.5, -0.2, 0);
     scene.add(sceneGroup);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    blobGroup = new THREE.Group();
+    sceneGroup.add(blobGroup);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(canvasWrap.clientWidth, canvasWrap.clientHeight);
+    renderer.setClearColor(0x08060E, 1);
     canvasWrap.appendChild(renderer.domElement);
 
     clock = new THREE.Clock();
 
-    buildCore();
-    buildShells();
+    buildBlob();
+    buildOrbs();
     buildParticles();
     addLights();
 
     window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, { passive: true });
 
     if (!prefersReducedMotion) {
       window.addEventListener('pointermove', onPointerMove);
@@ -59,165 +69,305 @@
     }
   }
 
-  // -- Core: distorted icosahedron with custom vertex displacement shader --
-  function buildCore() {
-    const geometry = new THREE.IcosahedronGeometry(1.6, 24);
+  // =========================================================================
+  // Blob — layered transparent spheres with different colors, creating depth
+  // =========================================================================
+  function buildBlob() {
+    // Layer 1: Deep core — dark purple, fully opaque, slightly displaced
+    const coreGeo = new THREE.IcosahedronGeometry(1.3, 6);
+    displaceGeometry(coreGeo, 0.15, 1.0);
+    const coreMat = new THREE.MeshPhongMaterial({
+      color: 0x4C1D95,
+      emissive: 0x3B0764,
+      emissiveIntensity: 0.8,
+      shininess: 100,
+      specular: 0xC084FC,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    blobGroup.add(core);
 
-    const material = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        uColorA: { value: ACCENT },
-        uColorB: { value: ACCENT_DIM },
-      },
-      vertexShader: `
-        uniform float uTime;
-        varying vec3 vNormal;
-        varying float vNoise;
-
-        // Simplex-ish noise (Ashima-derived, simplified)
-        vec3 mod289(vec3 x){return x - floor(x * (1.0/289.0)) * 289.0;}
-        vec4 mod289(vec4 x){return x - floor(x * (1.0/289.0)) * 289.0;}
-        vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
-        vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-
-        float snoise(vec3 v){
-          const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-          const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-          vec3 i  = floor(v + dot(v, C.yyy));
-          vec3 x0 = v - i + dot(i, C.xxx);
-          vec3 g = step(x0.yzx, x0.xyz);
-          vec3 l = 1.0 - g;
-          vec3 i1 = min(g.xyz, l.zxy);
-          vec3 i2 = max(g.xyz, l.zxy);
-          vec3 x1 = x0 - i1 + C.xxx;
-          vec3 x2 = x0 - i2 + C.yyy;
-          vec3 x3 = x0 - D.yyy;
-          i = mod289(i);
-          vec4 p = permute(permute(permute(
-                    i.z + vec4(0.0, i1.z, i2.z, 1.0))
-                  + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-                  + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-          float n_ = 0.142857142857;
-          vec3 ns = n_ * D.wyz - D.xzx;
-          vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-          vec4 x_ = floor(j * ns.z);
-          vec4 y_ = floor(j - 7.0 * x_);
-          vec4 x = x_ * ns.x + ns.yyyy;
-          vec4 y = y_ * ns.x + ns.yyyy;
-          vec4 h = 1.0 - abs(x) - abs(y);
-          vec4 b0 = vec4(x.xy, y.xy);
-          vec4 b1 = vec4(x.zw, y.zw);
-          vec4 s0 = floor(b0)*2.0 + 1.0;
-          vec4 s1 = floor(b1)*2.0 + 1.0;
-          vec4 sh = -step(h, vec4(0.0));
-          vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
-          vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
-          vec3 p0 = vec3(a0.xy,h.x);
-          vec3 p1 = vec3(a0.zw,h.y);
-          vec3 p2 = vec3(a1.xy,h.z);
-          vec3 p3 = vec3(a1.zw,h.w);
-          vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-          p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-          vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-          m = m * m;
-          return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-        }
-
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          float n = snoise(position * 0.9 + uTime * 0.12);
-          vNoise = n;
-          vec3 displaced = position + normal * n * 0.18;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 uColorA;
-        uniform vec3 uColorB;
-        varying vec3 vNormal;
-        varying float vNoise;
-
-        void main() {
-          float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.2);
-          vec3 color = mix(uColorB, uColorA, fresnel + vNoise * 0.3);
-          float alpha = 0.18 + fresnel * 0.5;
-          gl_FragColor = vec4(color, alpha);
-        }
-      `,
+    // Layer 2: Main blob — violet, transparent, displaced
+    const mainGeo = new THREE.IcosahedronGeometry(1.7, 8);
+    displaceGeometry(mainGeo, 0.25, 1.5);
+    const mainMat = new THREE.MeshPhongMaterial({
+      color: 0x8B5CF6,
+      emissive: 0x7C3AED,
+      emissiveIntensity: 0.6,
       transparent: true,
+      opacity: 0.55,
+      shininess: 80,
+      specular: 0xF0ABFC,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
+    const mainBlob = new THREE.Mesh(mainGeo, mainMat);
+    blobGroup.add(mainBlob);
 
-    core = new THREE.Mesh(geometry, material);
-    sceneGroup.add(core);
+    // Layer 3: Outer shell — rose, more transparent
+    const outerGeo = new THREE.IcosahedronGeometry(2.1, 6);
+    displaceGeometry(outerGeo, 0.3, 2.0);
+    const outerMat = new THREE.MeshPhongMaterial({
+      color: 0xC084FC,
+      emissive: 0xA855F7,
+      emissiveIntensity: 0.4,
+      transparent: true,
+      opacity: 0.3,
+      shininess: 60,
+      specular: 0xF0ABFC,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const outerBlob = new THREE.Mesh(outerGeo, outerMat);
+    blobGroup.add(outerBlob);
+
+    // Layer 4: Glow halo — large, very transparent
+    const haloGeo = new THREE.SphereGeometry(3.0, 32, 32);
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0x7C3AED,
+      transparent: true,
+      opacity: 0.08,
+      side: THREE.BackSide,
+    });
+    const halo = new THREE.Mesh(haloGeo, haloMat);
+    blobGroup.add(halo);
+
+    // Layer 5: Wireframe accent — subtle structure
+    const wireGeo = new THREE.IcosahedronGeometry(2.4, 1);
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: 0xC084FC,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.08,
+    });
+    const wireframe = new THREE.Mesh(wireGeo, wireMat);
+    blobGroup.add(wireframe);
+
+    // Store refs for animation
+    blobGroup.userData.layers = [core, mainBlob, outerBlob, halo, wireframe];
   }
 
-  // -- Shells: wireframe rings at different scales/rotations --
-  function buildShells() {
+  // Static noise displacement for geometry
+  function displaceGeometry(geometry, amplitude, frequency) {
+    const posAttr = geometry.getAttribute('position');
+    const vertex = new THREE.Vector3();
+
+    for (let i = 0; i < posAttr.count; i++) {
+      vertex.fromBufferAttribute(posAttr, i);
+      const len = vertex.length();
+      // Simple pseudo-noise: use vertex position to create organic variation
+      const noise = Math.sin(vertex.x * frequency * 3.7 + vertex.y * frequency * 2.3) *
+                    Math.cos(vertex.y * frequency * 4.1 + vertex.z * frequency * 1.9) *
+                    Math.sin(vertex.z * frequency * 3.3 + vertex.x * frequency * 2.7);
+      const displacement = 1.0 + noise * amplitude;
+      vertex.normalize().multiplyScalar(len * displacement);
+      posAttr.setXYZ(i, vertex.x, vertex.y, vertex.z);
+    }
+
+    posAttr.needsUpdate = true;
+    geometry.computeVertexNormals();
+  }
+
+  // =========================================================================
+  // Orbiting luminous orbs with glow sprites
+  // =========================================================================
+  // Orbiting luminous orbs (planets)
+  // =========================================================================
+  function buildOrbs() {
+    // 18 planets distributed across 6 distinct orbital rings
     const configs = [
-      { radius: 2.6, color: ACCENT, opacity: 0.18, segments: 1, rotSpeed: 0.04, axis: new THREE.Vector3(1, 0.4, 0) },
-      { radius: 3.3, color: BONE, opacity: 0.07, segments: 0, rotSpeed: -0.025, axis: new THREE.Vector3(0.2, 1, 0.3) },
-      { radius: 4.0, color: ACCENT, opacity: 0.06, segments: 2, rotSpeed: 0.018, axis: new THREE.Vector3(0.6, -0.3, 1) },
+      // Ring 1 (r=2.4, tilt=0.2)
+      { r: 2.4, size: 0.09, speed: 0.45, phase: 0,    color: COL_VIOLET, tilt: 0.2,  yScale: 0.35 },
+      { r: 2.4, size: 0.06, speed: 0.45, phase: 2.1,  color: COL_TEAL,   tilt: 0.2,  yScale: 0.35 },
+      { r: 2.4, size: 0.05, speed: 0.45, phase: 4.2,  color: COL_WARM,   tilt: 0.2,  yScale: 0.35 },
+
+      // Ring 2 (r=3.0, tilt=-0.3)
+      { r: 3.0, size: 0.08, speed: -0.32, phase: 0.5,  color: COL_ROSE,   tilt: -0.3, yScale: 0.32 },
+      { r: 3.0, size: 0.11, speed: -0.32, phase: 2.6,  color: COL_VIOLET, tilt: -0.3, yScale: 0.32 },
+      { r: 3.0, size: 0.06, speed: -0.32, phase: 4.7,  color: COL_TEAL,   tilt: -0.3, yScale: 0.32 },
+
+      // Ring 3 (r=3.6, tilt=0.45)
+      { r: 3.6, size: 0.07, speed: 0.25, phase: 1.2,  color: COL_WARM,   tilt: 0.45, yScale: 0.30 },
+      { r: 3.6, size: 0.05, speed: 0.25, phase: 3.3,  color: COL_ROSE,   tilt: 0.45, yScale: 0.30 },
+      { r: 3.6, size: 0.08, speed: 0.25, phase: 5.4,  color: COL_VIOLET, tilt: 0.45, yScale: 0.30 },
+
+      // Ring 4 (r=4.2, tilt=-0.5)
+      { r: 4.2, size: 0.10, speed: -0.18, phase: 0.1,  color: COL_TEAL,   tilt: -0.5, yScale: 0.28 },
+      { r: 4.2, size: 0.07, speed: -0.18, phase: 2.2,  color: COL_WARM,   tilt: -0.5, yScale: 0.28 },
+      { r: 4.2, size: 0.05, speed: -0.18, phase: 4.3,  color: COL_ROSE,   tilt: -0.5, yScale: 0.28 },
+
+      // Ring 5 (r=4.9, tilt=0.6)
+      { r: 4.9, size: 0.06, speed: 0.12, phase: 1.8,  color: COL_VIOLET, tilt: 0.6,  yScale: 0.25 },
+      { r: 4.9, size: 0.09, speed: 0.12, phase: 3.9,  color: COL_TEAL,   tilt: 0.6,  yScale: 0.25 },
+      { r: 4.9, size: 0.04, speed: 0.12, phase: 5.9,  color: COL_ROSE,   tilt: 0.6,  yScale: 0.25 },
+
+      // Ring 6 (r=5.6, tilt=-0.7)
+      { r: 5.6, size: 0.05, speed: -0.08, phase: 0.8,  color: COL_WARM,   tilt: -0.7, yScale: 0.22 },
+      { r: 5.6, size: 0.08, speed: -0.08, phase: 2.9,  color: COL_VIOLET, tilt: -0.7, yScale: 0.22 },
+      { r: 5.6, size: 0.04, speed: -0.08, phase: 5.0,  color: COL_TEAL,   tilt: -0.7, yScale: 0.22 },
     ];
 
-    configs.forEach((cfg) => {
-      const geo = new THREE.IcosahedronGeometry(cfg.radius, cfg.segments);
-      const wireGeo = new THREE.WireframeGeometry(geo);
-      const mat = new THREE.LineBasicMaterial({
+    // Glow sprite texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.12, 'rgba(192,132,252,0.9)');
+    grad.addColorStop(0.4, 'rgba(192,132,252,0.3)');
+    grad.addColorStop(1, 'rgba(192,132,252,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+    const glowTex = new THREE.CanvasTexture(canvas);
+
+    configs.forEach(cfg => {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(cfg.size, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: glowTex,
+          color: cfg.color,
+          transparent: true,
+          opacity: 0.9,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      sprite.scale.setScalar(cfg.size * 14);
+      mesh.add(sprite);
+
+      mesh.userData = cfg;
+      sceneGroup.add(mesh);
+      orbs.push(mesh);
+    });
+
+    // Build illuminated orbital rings
+    buildOrbitalRings();
+  }
+
+  // =========================================================================
+  // Orbital rings — glowing elliptical paths
+  // =========================================================================
+  function buildOrbitalRings() {
+    const ringConfigs = [
+      { r: 2.4, tilt: 0.2,  yScale: 0.35, color: COL_TEAL,   opacity: 0.30 },
+      { r: 3.0, tilt: -0.3, yScale: 0.32, color: COL_VIOLET, opacity: 0.26 },
+      { r: 3.6, tilt: 0.45, yScale: 0.30, color: COL_ROSE,   opacity: 0.22 },
+      { r: 4.2, tilt: -0.5, yScale: 0.28, color: COL_WARM,   opacity: 0.18 },
+      { r: 4.9, tilt: 0.6,  yScale: 0.25, color: COL_TEAL,   opacity: 0.14 },
+      { r: 5.6, tilt: -0.7, yScale: 0.22, color: COL_VIOLET, opacity: 0.10 },
+    ];
+
+    ringConfigs.forEach(cfg => {
+      // Create elliptical path from points
+      const segments = 128;
+      const points = [];
+      for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        const x = Math.cos(angle) * cfg.r;
+        const y = Math.sin(angle * 0.7 + cfg.tilt) * cfg.r * cfg.yScale;
+        const z = Math.sin(angle) * cfg.r * 0.6;
+        points.push(new THREE.Vector3(x, y, z));
+      }
+
+      const ringGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const ringMat = new THREE.LineBasicMaterial({
         color: cfg.color,
         transparent: true,
         opacity: cfg.opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       });
-      const shell = new THREE.LineSegments(wireGeo, mat);
-      shell.userData.rotSpeed = cfg.rotSpeed;
-      shell.userData.axis = cfg.axis.normalize();
-      sceneGroup.add(shell);
-      shells.push(shell);
+      const ring = new THREE.Line(ringGeo, ringMat);
+      sceneGroup.add(ring);
     });
   }
 
-  // -- Particles: drifting sediment field --
+  // =========================================================================
+  // Ambient particles
+  // =========================================================================
   function buildParticles() {
-    const count = 600;
+    const count = 300;
     const positions = new Float32Array(count * 3);
-    const radius = 6;
+    const radius = 8;
 
     for (let i = 0; i < count; i++) {
-      const r = radius * (0.4 + Math.random() * 0.6);
+      const r = radius * (0.3 + Math.random() * 0.7);
       const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos((Math.random() * 2) - 1);
-
+      const phi = Math.acos(Math.random() * 2 - 1);
       positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       positions[i * 3 + 2] = r * Math.cos(phi);
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-    const material = new THREE.PointsMaterial({
-      color: 0x8A94A6,
-      size: 0.018,
+    // Glow dot texture
+    const c = document.createElement('canvas');
+    c.width = 32;
+    c.height = 32;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.3, 'rgba(192,132,252,0.4)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 32, 32);
+    const dotTex = new THREE.CanvasTexture(c);
+
+    particles = new THREE.Points(geo, new THREE.PointsMaterial({
+      map: dotTex,
+      color: COL_VIOLET,
+      size: 0.12,
       transparent: true,
       opacity: 0.5,
       sizeAttenuation: true,
-    });
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }));
 
-    particles = new THREE.Points(geometry, material);
     sceneGroup.add(particles);
   }
 
+  // =========================================================================
+  // Lights — multi-colored for the iridescent look
+  // =========================================================================
   function addLights() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambient);
+    scene.add(new THREE.AmbientLight(0x4C1D95, 0.5));
+
+    const l1 = new THREE.PointLight(COL_VIOLET, 5, 25);
+    l1.position.set(4, 2, 5);
+    scene.add(l1);
+
+    const l2 = new THREE.PointLight(COL_ROSE, 4, 20);
+    l2.position.set(-3, -2, 4);
+    scene.add(l2);
+
+    const l3 = new THREE.PointLight(COL_TEAL, 3, 18);
+    l3.position.set(0, 4, -3);
+    scene.add(l3);
+
+    const l4 = new THREE.PointLight(COL_DEEP, 3, 15);
+    l4.position.set(-2, 0, 6);
+    scene.add(l4);
   }
 
+  // =========================================================================
+  // Interaction
+  // =========================================================================
   function onPointerMove(e) {
     pointerX = (e.clientX / window.innerWidth) * 2 - 1;
     pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-    targetRotY = pointerX * 0.3;
-    targetRotX = pointerY * 0.2;
+    targetRotY = pointerX * 0.9;
+    targetRotX = pointerY * 0.5;
+  }
+
+  function onScroll() {
+    targetScrollY = window.scrollY;
   }
 
   function onResize() {
@@ -228,23 +378,62 @@
     renderer.setSize(w, h);
   }
 
+  // =========================================================================
+  // Animation
+  // =========================================================================
   function animate() {
     requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
 
-    core.material.uniforms.uTime.value = t;
-    core.rotation.y += 0.0018;
-    core.rotation.x += 0.0008;
+    // Smooth scroll interpolation
+    scrollY += (targetScrollY - scrollY) * 0.1;
 
-    shells.forEach((shell) => {
-      shell.rotateOnAxis(shell.userData.axis, shell.userData.rotSpeed * 0.01);
+    // Apply scroll-based rotation (sweet spot: scrollY * 0.005)
+    const scrollRot = scrollY * 0.005;
+
+    // Blob rotation — slow, hypnotic + scroll-reactive
+    blobGroup.rotation.y = t * 0.08 + scrollRot;
+    blobGroup.rotation.x = Math.sin(t * 0.04) * 0.15 + scrollRot * 0.3;
+    blobGroup.rotation.z = Math.cos(t * 0.03) * 0.08;
+
+    // Individual layer counter-rotations for organic feel
+    const layers = blobGroup.userData.layers;
+    if (layers) {
+      layers[0].rotation.y = -t * 0.03 - scrollRot * 0.5; // Core
+      layers[1].rotation.x = t * 0.02 + scrollRot * 0.4;  // Main
+      layers[2].rotation.z = -t * 0.015 - scrollRot * 0.2; // Outer
+      layers[4].rotation.y = t * 0.06 + scrollRot * 0.8;  // Wireframe
+      layers[4].rotation.x = t * 0.04;
+    }
+
+    // Pulse the blob slightly
+    const pulse = 1.0 + Math.sin(t * 0.8) * 0.03;
+    blobGroup.scale.setScalar(pulse);
+
+    // Orbiting orbs — follow elliptical paths matching their ring
+    orbs.forEach(orb => {
+      const d = orb.userData;
+      const angle = t * d.speed + d.phase + scrollRot * 0.2; // Scroll speeds up orbs slightly too
+      orb.position.x = Math.cos(angle) * d.r;
+      orb.position.y = Math.sin(angle * 0.7 + d.tilt) * d.r * (d.yScale || 0.35);
+      orb.position.z = Math.sin(angle) * d.r * 0.6;
     });
 
-    particles.rotation.y += 0.0006;
+    // Slow particle drift
+    if (particles) {
+      particles.rotation.y += 0.0004 + scrollRot * 0.0001;
+    }
 
-    // Smooth camera parallax
-    sceneGroup.rotation.y += (targetRotY - sceneGroup.rotation.y) * 0.04;
-    sceneGroup.rotation.x += (targetRotX - sceneGroup.rotation.x) * 0.04;
+    // Smooth parallax — snappy response
+    smoothRotX += (targetRotX - smoothRotX) * 0.12;
+    smoothRotY += (targetRotY - smoothRotY) * 0.12;
+    
+    // Combine mouse parallax
+    sceneGroup.rotation.y = smoothRotY;
+    sceneGroup.rotation.x = smoothRotX;
+    
+    // Vertical scroll parallax shift (moves upwards slightly slower than scroll to create depth)
+    sceneGroup.position.y = -0.2 + scrollY * 0.0012;
 
     renderer.render(scene, camera);
   }

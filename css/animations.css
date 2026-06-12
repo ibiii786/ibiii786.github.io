@@ -44,8 +44,7 @@
    ========================================================================== */
 .hero__eyebrow,
 .hero__title,
-.hero__sub,
-.hero__scroll {
+.hero__sub {
   opacity: 0;
   transform: translateY(20px);
   animation: heroIn 0.9s var(--ease-out) forwards;
@@ -54,7 +53,6 @@
 .hero__eyebrow { animation-delay: 0.2s; }
 .hero__title { animation-delay: 0.35s; }
 .hero__sub { animation-delay: 0.55s; }
-.hero__scroll { animation-delay: 0.9s; }
 
 @keyframes heroIn {
   to {
@@ -66,8 +64,7 @@
 @media (prefers-reduced-motion: reduce) {
   .hero__eyebrow,
   .hero__title,
-  .hero__sub,
-  .hero__scroll {
+  .hero__sub {
     opacity: 1;
     transform: none;
     animation: none;
