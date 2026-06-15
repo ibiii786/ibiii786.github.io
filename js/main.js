@@ -60,7 +60,7 @@ async function loadProjects() {
       .order('created_at', { ascending: false });
 
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Request timed out')), 10000)
+      setTimeout(() => reject(new Error('Request timed out')), 5000)
     );
 
     const result = await Promise.race([fetchPromise, timeoutPromise]);
@@ -100,7 +100,9 @@ function renderWorkItem(project, index) {
   if (project.figma_embed_url) {
     mediaHTML = `<iframe src="${escapeAttr(project.figma_embed_url)}" allowfullscreen loading="lazy" title="${escapeAttr(project.title)} prototype"></iframe>`;
   } else if (project.cover_image_url) {
-    mediaHTML = `<img src="${escapeAttr(project.cover_image_url)}" alt="${escapeAttr(project.title)}" loading="lazy" />`;
+    // Append Supabase image transform params for CDN-optimized delivery
+    const optimizedUrl = project.cover_image_url + (project.cover_image_url.includes('?') ? '&' : '?') + 'width=800&quality=75';
+    mediaHTML = `<img src="${escapeAttr(optimizedUrl)}" alt="${escapeAttr(project.title)}" loading="lazy" decoding="async" />`;
   } else {
     mediaHTML = `<div class="work-item__placeholder"></div>`;
   }

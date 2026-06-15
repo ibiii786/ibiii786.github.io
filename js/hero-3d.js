@@ -1,7 +1,7 @@
 // ==========================================================================
-// Hero 3D — "Aurora Nebula"
-// A luminous morphing blob using standard Three.js materials (no custom shaders)
-// with orbiting orbs and cosmic particles. Mouse-reactive parallax.
+// Hero 3D background
+// Morphing blob with orbiting orbs, orbital rings, and cosmic particles.
+// Mouse-reactive parallax. Optimized for fast init.
 // ==========================================================================
 
 (function () {
@@ -9,6 +9,7 @@
   if (!canvasWrap || typeof THREE === 'undefined') return;
 
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isMobile = window.innerWidth < 768;
 
   let scene, camera, renderer, clock, sceneGroup;
   let blobGroup, orbs = [], particles;
@@ -16,6 +17,7 @@
   let targetRotX = 0, targetRotY = 0;
   let smoothRotX = 0, smoothRotY = 0;
   let scrollY = 0, targetScrollY = 0;
+  let animationId = null;
 
   // Colors
   const COL_VIOLET = 0xC084FC;
@@ -45,8 +47,9 @@
     blobGroup = new THREE.Group();
     sceneGroup.add(blobGroup);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer = new THREE.WebGLRenderer({ antialias: !isMobile, alpha: false });
+    // Cap pixel ratio: 1.5 on mobile, 2 on desktop
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
     renderer.setSize(canvasWrap.clientWidth, canvasWrap.clientHeight);
     renderer.setClearColor(0x08060E, 1);
     canvasWrap.appendChild(renderer.domElement);
@@ -61,6 +64,9 @@
     window.addEventListener('resize', onResize);
     window.addEventListener('scroll', onScroll, { passive: true });
 
+    // Pause animation when tab is hidden to save CPU/battery
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     if (!prefersReducedMotion) {
       window.addEventListener('pointermove', onPointerMove);
       animate();
@@ -70,11 +76,11 @@
   }
 
   // =========================================================================
-  // Blob — layered transparent spheres with different colors, creating depth
+  // Blob — layered transparent spheres
   // =========================================================================
   function buildBlob() {
-    // Layer 1: Deep core — dark purple, fully opaque, slightly displaced
-    const coreGeo = new THREE.IcosahedronGeometry(1.3, 6);
+    // Layer 1: Deep core
+    const coreGeo = new THREE.IcosahedronGeometry(1.3, 4);
     displaceGeometry(coreGeo, 0.15, 1.0);
     const coreMat = new THREE.MeshPhongMaterial({
       color: 0x4C1D95,
@@ -86,8 +92,8 @@
     const core = new THREE.Mesh(coreGeo, coreMat);
     blobGroup.add(core);
 
-    // Layer 2: Main blob — violet, transparent, displaced
-    const mainGeo = new THREE.IcosahedronGeometry(1.7, 8);
+    // Layer 2: Main blob — violet, transparent
+    const mainGeo = new THREE.IcosahedronGeometry(1.7, 5);
     displaceGeometry(mainGeo, 0.25, 1.5);
     const mainMat = new THREE.MeshPhongMaterial({
       color: 0x8B5CF6,
@@ -104,7 +110,7 @@
     blobGroup.add(mainBlob);
 
     // Layer 3: Outer shell — rose, more transparent
-    const outerGeo = new THREE.IcosahedronGeometry(2.1, 6);
+    const outerGeo = new THREE.IcosahedronGeometry(2.1, 4);
     displaceGeometry(outerGeo, 0.3, 2.0);
     const outerMat = new THREE.MeshPhongMaterial({
       color: 0xC084FC,
@@ -120,8 +126,8 @@
     const outerBlob = new THREE.Mesh(outerGeo, outerMat);
     blobGroup.add(outerBlob);
 
-    // Layer 4: Glow halo — large, very transparent
-    const haloGeo = new THREE.SphereGeometry(3.0, 32, 32);
+    // Layer 4: Glow halo
+    const haloGeo = new THREE.SphereGeometry(3.0, 24, 24);
     const haloMat = new THREE.MeshBasicMaterial({
       color: 0x7C3AED,
       transparent: true,
@@ -131,7 +137,7 @@
     const halo = new THREE.Mesh(haloGeo, haloMat);
     blobGroup.add(halo);
 
-    // Layer 5: Wireframe accent — subtle structure
+    // Layer 5: Wireframe accent
     const wireGeo = new THREE.IcosahedronGeometry(2.4, 1);
     const wireMat = new THREE.MeshBasicMaterial({
       color: 0xC084FC,
@@ -142,7 +148,6 @@
     const wireframe = new THREE.Mesh(wireGeo, wireMat);
     blobGroup.add(wireframe);
 
-    // Store refs for animation
     blobGroup.userData.layers = [core, mainBlob, outerBlob, halo, wireframe];
   }
 
@@ -154,7 +159,6 @@
     for (let i = 0; i < posAttr.count; i++) {
       vertex.fromBufferAttribute(posAttr, i);
       const len = vertex.length();
-      // Simple pseudo-noise: use vertex position to create organic variation
       const noise = Math.sin(vertex.x * frequency * 3.7 + vertex.y * frequency * 2.3) *
                     Math.cos(vertex.y * frequency * 4.1 + vertex.z * frequency * 1.9) *
                     Math.sin(vertex.z * frequency * 3.3 + vertex.x * frequency * 2.7);
@@ -168,45 +172,36 @@
   }
 
   // =========================================================================
-  // Orbiting luminous orbs with glow sprites
-  // =========================================================================
-  // Orbiting luminous orbs (planets)
+  // Orbiting orbs — 12 planets across 6 rings
   // =========================================================================
   function buildOrbs() {
-    // 18 planets distributed across 6 distinct orbital rings
     const configs = [
-      // Ring 1 (r=2.4, tilt=0.2)
+      // Ring 1 (r=2.4)
       { r: 2.4, size: 0.09, speed: 0.45, phase: 0,    color: COL_VIOLET, tilt: 0.2,  yScale: 0.35 },
-      { r: 2.4, size: 0.06, speed: 0.45, phase: 2.1,  color: COL_TEAL,   tilt: 0.2,  yScale: 0.35 },
-      { r: 2.4, size: 0.05, speed: 0.45, phase: 4.2,  color: COL_WARM,   tilt: 0.2,  yScale: 0.35 },
+      { r: 2.4, size: 0.06, speed: 0.45, phase: 3.14, color: COL_TEAL,   tilt: 0.2,  yScale: 0.35 },
 
-      // Ring 2 (r=3.0, tilt=-0.3)
+      // Ring 2 (r=3.0)
       { r: 3.0, size: 0.08, speed: -0.32, phase: 0.5,  color: COL_ROSE,   tilt: -0.3, yScale: 0.32 },
-      { r: 3.0, size: 0.11, speed: -0.32, phase: 2.6,  color: COL_VIOLET, tilt: -0.3, yScale: 0.32 },
-      { r: 3.0, size: 0.06, speed: -0.32, phase: 4.7,  color: COL_TEAL,   tilt: -0.3, yScale: 0.32 },
+      { r: 3.0, size: 0.11, speed: -0.32, phase: 3.64, color: COL_VIOLET, tilt: -0.3, yScale: 0.32 },
 
-      // Ring 3 (r=3.6, tilt=0.45)
+      // Ring 3 (r=3.6)
       { r: 3.6, size: 0.07, speed: 0.25, phase: 1.2,  color: COL_WARM,   tilt: 0.45, yScale: 0.30 },
-      { r: 3.6, size: 0.05, speed: 0.25, phase: 3.3,  color: COL_ROSE,   tilt: 0.45, yScale: 0.30 },
-      { r: 3.6, size: 0.08, speed: 0.25, phase: 5.4,  color: COL_VIOLET, tilt: 0.45, yScale: 0.30 },
+      { r: 3.6, size: 0.08, speed: 0.25, phase: 4.34, color: COL_VIOLET, tilt: 0.45, yScale: 0.30 },
 
-      // Ring 4 (r=4.2, tilt=-0.5)
+      // Ring 4 (r=4.2)
       { r: 4.2, size: 0.10, speed: -0.18, phase: 0.1,  color: COL_TEAL,   tilt: -0.5, yScale: 0.28 },
-      { r: 4.2, size: 0.07, speed: -0.18, phase: 2.2,  color: COL_WARM,   tilt: -0.5, yScale: 0.28 },
-      { r: 4.2, size: 0.05, speed: -0.18, phase: 4.3,  color: COL_ROSE,   tilt: -0.5, yScale: 0.28 },
+      { r: 4.2, size: 0.07, speed: -0.18, phase: 3.24, color: COL_WARM,   tilt: -0.5, yScale: 0.28 },
 
-      // Ring 5 (r=4.9, tilt=0.6)
+      // Ring 5 (r=4.9)
       { r: 4.9, size: 0.06, speed: 0.12, phase: 1.8,  color: COL_VIOLET, tilt: 0.6,  yScale: 0.25 },
-      { r: 4.9, size: 0.09, speed: 0.12, phase: 3.9,  color: COL_TEAL,   tilt: 0.6,  yScale: 0.25 },
-      { r: 4.9, size: 0.04, speed: 0.12, phase: 5.9,  color: COL_ROSE,   tilt: 0.6,  yScale: 0.25 },
+      { r: 4.9, size: 0.09, speed: 0.12, phase: 4.94, color: COL_TEAL,   tilt: 0.6,  yScale: 0.25 },
 
-      // Ring 6 (r=5.6, tilt=-0.7)
+      // Ring 6 (r=5.6)
       { r: 5.6, size: 0.05, speed: -0.08, phase: 0.8,  color: COL_WARM,   tilt: -0.7, yScale: 0.22 },
-      { r: 5.6, size: 0.08, speed: -0.08, phase: 2.9,  color: COL_VIOLET, tilt: -0.7, yScale: 0.22 },
-      { r: 5.6, size: 0.04, speed: -0.08, phase: 5.0,  color: COL_TEAL,   tilt: -0.7, yScale: 0.22 },
+      { r: 5.6, size: 0.08, speed: -0.08, phase: 3.94, color: COL_VIOLET, tilt: -0.7, yScale: 0.22 },
     ];
 
-    // Glow sprite texture
+    // Shared glow sprite texture
     const canvas = document.createElement('canvas');
     canvas.width = 64;
     canvas.height = 64;
@@ -222,7 +217,7 @@
 
     configs.forEach(cfg => {
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(cfg.size, 12, 12),
+        new THREE.SphereGeometry(cfg.size, 8, 8),
         new THREE.MeshBasicMaterial({ color: 0xffffff })
       );
 
@@ -244,12 +239,11 @@
       orbs.push(mesh);
     });
 
-    // Build illuminated orbital rings
     buildOrbitalRings();
   }
 
   // =========================================================================
-  // Orbital rings — glowing elliptical paths
+  // Orbital rings
   // =========================================================================
   function buildOrbitalRings() {
     const ringConfigs = [
@@ -262,8 +256,7 @@
     ];
 
     ringConfigs.forEach(cfg => {
-      // Create elliptical path from points
-      const segments = 128;
+      const segments = 96;
       const points = [];
       for (let i = 0; i <= segments; i++) {
         const angle = (i / segments) * Math.PI * 2;
@@ -290,7 +283,7 @@
   // Ambient particles
   // =========================================================================
   function buildParticles() {
-    const count = 300;
+    const count = isMobile ? 100 : 150;
     const positions = new Float32Array(count * 3);
     const radius = 8;
 
@@ -334,7 +327,7 @@
   }
 
   // =========================================================================
-  // Lights — multi-colored for the iridescent look
+  // Lights
   // =========================================================================
   function addLights() {
     scene.add(new THREE.AmbientLight(0x4C1D95, 0.5));
@@ -378,20 +371,37 @@
     renderer.setSize(w, h);
   }
 
+  function onVisibilityChange() {
+    if (document.hidden) {
+      // Pause animation when tab is not visible
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
+        clock.stop();
+      }
+    } else {
+      // Resume animation
+      if (!animationId && !prefersReducedMotion) {
+        clock.start();
+        animate();
+      }
+    }
+  }
+
   // =========================================================================
   // Animation
   // =========================================================================
   function animate() {
-    requestAnimationFrame(animate);
+    animationId = requestAnimationFrame(animate);
     const t = clock.getElapsedTime();
 
     // Smooth scroll interpolation
     scrollY += (targetScrollY - scrollY) * 0.1;
 
-    // Apply scroll-based rotation (sweet spot: scrollY * 0.005)
+    // Scroll-based rotation
     const scrollRot = scrollY * 0.005;
 
-    // Blob rotation — slow, hypnotic + scroll-reactive
+    // Blob rotation
     blobGroup.rotation.y = t * 0.08 + scrollRot;
     blobGroup.rotation.x = Math.sin(t * 0.04) * 0.15 + scrollRot * 0.3;
     blobGroup.rotation.z = Math.cos(t * 0.03) * 0.08;
@@ -399,21 +409,21 @@
     // Individual layer counter-rotations for organic feel
     const layers = blobGroup.userData.layers;
     if (layers) {
-      layers[0].rotation.y = -t * 0.03 - scrollRot * 0.5; // Core
-      layers[1].rotation.x = t * 0.02 + scrollRot * 0.4;  // Main
-      layers[2].rotation.z = -t * 0.015 - scrollRot * 0.2; // Outer
-      layers[4].rotation.y = t * 0.06 + scrollRot * 0.8;  // Wireframe
+      layers[0].rotation.y = -t * 0.03 - scrollRot * 0.5;
+      layers[1].rotation.x = t * 0.02 + scrollRot * 0.4;
+      layers[2].rotation.z = -t * 0.015 - scrollRot * 0.2;
+      layers[4].rotation.y = t * 0.06 + scrollRot * 0.8;
       layers[4].rotation.x = t * 0.04;
     }
 
-    // Pulse the blob slightly
+    // Subtle scale pulse
     const pulse = 1.0 + Math.sin(t * 0.8) * 0.03;
     blobGroup.scale.setScalar(pulse);
 
-    // Orbiting orbs — follow elliptical paths matching their ring
+    // Orbiting orbs
     orbs.forEach(orb => {
       const d = orb.userData;
-      const angle = t * d.speed + d.phase + scrollRot * 0.2; // Scroll speeds up orbs slightly too
+      const angle = t * d.speed + d.phase + scrollRot * 0.2;
       orb.position.x = Math.cos(angle) * d.r;
       orb.position.y = Math.sin(angle * 0.7 + d.tilt) * d.r * (d.yScale || 0.35);
       orb.position.z = Math.sin(angle) * d.r * 0.6;
@@ -424,15 +434,14 @@
       particles.rotation.y += 0.0004 + scrollRot * 0.0001;
     }
 
-    // Smooth parallax — snappy response
+    // Smooth parallax
     smoothRotX += (targetRotX - smoothRotX) * 0.12;
     smoothRotY += (targetRotY - smoothRotY) * 0.12;
     
-    // Combine mouse parallax
     sceneGroup.rotation.y = smoothRotY;
     sceneGroup.rotation.x = smoothRotX;
     
-    // Vertical scroll parallax shift (moves upwards slightly slower than scroll to create depth)
+    // Vertical scroll parallax
     sceneGroup.position.y = -0.2 + scrollY * 0.0012;
 
     renderer.render(scene, camera);

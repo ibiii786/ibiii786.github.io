@@ -143,12 +143,14 @@ function handleImageSelect(e) {
 }
 
 async function uploadImage(file) {
-  const ext = file.name.split('.').pop();
+  // Compress/resize before upload for optimal performance
+  const compressed = await compressImage(file, 1200, 0.8);
+  const ext = 'jpg'; // Always output as JPEG after compression
   const fileName = `${crypto.randomUUID()}.${ext}`;
 
   const { error } = await supabaseClient.storage
     .from(PROJECT_IMAGES_BUCKET)
-    .upload(fileName, file, { cacheControl: '3600', upsert: false });
+    .upload(fileName, compressed, { cacheControl: '31536000', upsert: false, contentType: 'image/jpeg' });
 
   if (error) {
     throw new Error(`Image upload failed: ${error.message}`);
@@ -159,6 +161,49 @@ async function uploadImage(file) {
     .getPublicUrl(fileName);
 
   return data.publicUrl;
+}
+
+/**
+ * Compress and resize an image file using canvas.
+ * @param {File} file - Original image file
+ * @param {number} maxDim - Maximum width or height in pixels
+ * @param {number} quality - JPEG quality (0-1)
+ * @returns {Promise<Blob>} Compressed image blob
+ */
+function compressImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Scale down if larger than maxDim
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Image compression failed'));
+          }
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 async function deleteImageByUrl(url) {
