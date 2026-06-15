@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNavScroll();
   initScrollReveal();
   loadProjects();
+  initMobileMenu();
 });
 
 // -- Nav background on scroll --
@@ -153,4 +154,36 @@ function escapeHTML(str) {
 function escapeAttr(str) {
   if (str == null) return '';
   return String(str).replace(/"/g, '&quot;');
+}
+
+// -- Mobile menu toggle --
+function initMobileMenu() {
+  const toggleBtn = document.querySelector('.site-nav__toggle');
+  const mobileMenu = document.getElementById('mobile-menu');
+  const links = document.querySelectorAll('.mobile-menu__link');
+
+  if (!toggleBtn || !mobileMenu) return;
+
+  const toggle = () => {
+    const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+    toggleBtn.setAttribute('aria-expanded', !isExpanded);
+    toggleBtn.classList.toggle('is-active', !isExpanded);
+
+    mobileMenu.setAttribute('aria-hidden', isExpanded);
+    mobileMenu.classList.toggle('is-open', !isExpanded);
+    document.body.classList.toggle('menu-open', !isExpanded);
+  };
+
+  toggleBtn.addEventListener('click', toggle);
+
+  // Close menu when clicking links
+  links.forEach((link) => {
+    link.addEventListener('click', () => {
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      toggleBtn.classList.remove('is-active');
+      mobileMenu.setAttribute('aria-hidden', 'true');
+      mobileMenu.classList.remove('is-open');
+      document.body.classList.remove('menu-open');
+    });
+  });
 }

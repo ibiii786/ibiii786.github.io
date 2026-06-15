@@ -29,12 +29,28 @@
 
   <nav class="site-nav">
     <a href="#top" class="site-nav__mark">GHULAM <span class="nav-sep">/</span> IBRAHIM</a>
+    
+    <button class="site-nav__toggle" aria-label="Toggle Menu" aria-expanded="false" aria-controls="mobile-menu">
+      <span class="site-nav__toggle-bar"></span>
+      <span class="site-nav__toggle-bar"></span>
+      <span class="site-nav__toggle-bar"></span>
+    </button>
+
     <ul class="site-nav__links">
       <li><a href="#work">Work</a></li>
       <li><a href="#about">About</a></li>
       <li><a href="#contact">Contact</a></li>
     </ul>
   </nav>
+
+  <!-- Mobile Fullscreen Overlay Menu -->
+  <div class="mobile-menu" id="mobile-menu" aria-hidden="true">
+    <ul class="mobile-menu__links">
+      <li><a href="#work" class="mobile-menu__link">Work</a></li>
+      <li><a href="#about" class="mobile-menu__link">About</a></li>
+      <li><a href="#contact" class="mobile-menu__link">Contact</a></li>
+    </ul>
+  </div>
 
   <main id="top">
 
