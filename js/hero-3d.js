@@ -172,33 +172,42 @@
   }
 
   // =========================================================================
-  // Orbiting orbs — 12 planets across 6 rings
+  // Orbiting orbs & orbital rings — 12 planets across 6 rings
   // =========================================================================
   function buildOrbs() {
-    const configs = [
-      // Ring 1 (r=2.4)
-      { r: 2.4, size: 0.09, speed: 0.45, phase: 0,    color: COL_VIOLET, tilt: 0.2,  yScale: 0.35 },
-      { r: 2.4, size: 0.06, speed: 0.45, phase: 3.14, color: COL_TEAL,   tilt: 0.2,  yScale: 0.35 },
+    const ringConfigs = [
+      { r: 2.4, rotX: 0.4,  rotZ: 0.15,  color: COL_TEAL,   opacity: 0.30 },
+      { r: 3.0, rotX: -0.3, rotZ: -0.25, color: COL_VIOLET, opacity: 0.26 },
+      { r: 3.6, rotX: 0.5,  rotZ: 0.35,  color: COL_ROSE,   opacity: 0.22 },
+      { r: 4.2, rotX: -0.5, rotZ: -0.4,  color: COL_WARM,   opacity: 0.18 },
+      { r: 4.9, rotX: 0.6,  rotZ: 0.45,  color: COL_TEAL,   opacity: 0.14 },
+      { r: 5.6, rotX: -0.6, rotZ: -0.5,  color: COL_VIOLET, opacity: 0.10 },
+    ];
 
-      // Ring 2 (r=3.0)
-      { r: 3.0, size: 0.08, speed: -0.32, phase: 0.5,  color: COL_ROSE,   tilt: -0.3, yScale: 0.32 },
-      { r: 3.0, size: 0.11, speed: -0.32, phase: 3.64, color: COL_VIOLET, tilt: -0.3, yScale: 0.32 },
+    const orbConfigs = [
+      // Ring 0 (r=2.4)
+      { ringIndex: 0, size: 0.09, speed: 0.45, phase: 0,    color: COL_VIOLET },
+      { ringIndex: 0, size: 0.06, speed: 0.45, phase: Math.PI, color: COL_TEAL },
 
-      // Ring 3 (r=3.6)
-      { r: 3.6, size: 0.07, speed: 0.25, phase: 1.2,  color: COL_WARM,   tilt: 0.45, yScale: 0.30 },
-      { r: 3.6, size: 0.08, speed: 0.25, phase: 4.34, color: COL_VIOLET, tilt: 0.45, yScale: 0.30 },
+      // Ring 1 (r=3.0)
+      { ringIndex: 1, size: 0.08, speed: -0.32, phase: 0.5,  color: COL_ROSE },
+      { ringIndex: 1, size: 0.11, speed: -0.32, phase: 0.5 + Math.PI, color: COL_VIOLET },
 
-      // Ring 4 (r=4.2)
-      { r: 4.2, size: 0.10, speed: -0.18, phase: 0.1,  color: COL_TEAL,   tilt: -0.5, yScale: 0.28 },
-      { r: 4.2, size: 0.07, speed: -0.18, phase: 3.24, color: COL_WARM,   tilt: -0.5, yScale: 0.28 },
+      // Ring 2 (r=3.6)
+      { ringIndex: 2, size: 0.07, speed: 0.25, phase: 1.2,  color: COL_WARM },
+      { ringIndex: 2, size: 0.08, speed: 0.25, phase: 1.2 + Math.PI, color: COL_VIOLET },
 
-      // Ring 5 (r=4.9)
-      { r: 4.9, size: 0.06, speed: 0.12, phase: 1.8,  color: COL_VIOLET, tilt: 0.6,  yScale: 0.25 },
-      { r: 4.9, size: 0.09, speed: 0.12, phase: 4.94, color: COL_TEAL,   tilt: 0.6,  yScale: 0.25 },
+      // Ring 3 (r=4.2)
+      { ringIndex: 3, size: 0.10, speed: -0.18, phase: 0.1,  color: COL_TEAL },
+      { ringIndex: 3, size: 0.07, speed: -0.18, phase: 0.1 + Math.PI, color: COL_WARM },
 
-      // Ring 6 (r=5.6)
-      { r: 5.6, size: 0.05, speed: -0.08, phase: 0.8,  color: COL_WARM,   tilt: -0.7, yScale: 0.22 },
-      { r: 5.6, size: 0.08, speed: -0.08, phase: 3.94, color: COL_VIOLET, tilt: -0.7, yScale: 0.22 },
+      // Ring 4 (r=4.9)
+      { ringIndex: 4, size: 0.06, speed: 0.12, phase: 1.8,  color: COL_VIOLET },
+      { ringIndex: 4, size: 0.09, speed: 0.12, phase: 1.8 + Math.PI, color: COL_TEAL },
+
+      // Ring 5 (r=5.6)
+      { ringIndex: 5, size: 0.05, speed: -0.08, phase: 0.8,  color: COL_WARM },
+      { ringIndex: 5, size: 0.08, speed: -0.08, phase: 0.8 + Math.PI, color: COL_VIOLET },
     ];
 
     // Shared glow sprite texture
@@ -215,7 +224,39 @@
     ctx.fillRect(0, 0, 64, 64);
     const glowTex = new THREE.CanvasTexture(canvas);
 
-    configs.forEach(cfg => {
+    // Create the ring groups and their line geometries
+    const ringGroups = ringConfigs.map(cfg => {
+      const group = new THREE.Group();
+      group.rotation.x = cfg.rotX;
+      group.rotation.z = cfg.rotZ;
+      sceneGroup.add(group);
+
+      const points = [];
+      const segments = 96;
+      for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(theta) * cfg.r, 0, Math.sin(theta) * cfg.r));
+      }
+
+      const ringGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const ringMat = new THREE.LineBasicMaterial({
+        color: cfg.color,
+        transparent: true,
+        opacity: cfg.opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const ringLine = new THREE.Line(ringGeo, ringMat);
+      group.add(ringLine);
+
+      return group;
+    });
+
+    // Add orbs to their corresponding ring groups
+    orbConfigs.forEach(cfg => {
+      const parentGroup = ringGroups[cfg.ringIndex];
+      const r = ringConfigs[cfg.ringIndex].r;
+
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(cfg.size, 8, 8),
         new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -234,48 +275,14 @@
       sprite.scale.setScalar(cfg.size * 14);
       mesh.add(sprite);
 
-      mesh.userData = cfg;
-      sceneGroup.add(mesh);
+      mesh.userData = {
+        r: r,
+        speed: cfg.speed,
+        phase: cfg.phase
+      };
+      
+      parentGroup.add(mesh);
       orbs.push(mesh);
-    });
-
-    buildOrbitalRings();
-  }
-
-  // =========================================================================
-  // Orbital rings
-  // =========================================================================
-  function buildOrbitalRings() {
-    const ringConfigs = [
-      { r: 2.4, tilt: 0.2,  yScale: 0.35, color: COL_TEAL,   opacity: 0.30 },
-      { r: 3.0, tilt: -0.3, yScale: 0.32, color: COL_VIOLET, opacity: 0.26 },
-      { r: 3.6, tilt: 0.45, yScale: 0.30, color: COL_ROSE,   opacity: 0.22 },
-      { r: 4.2, tilt: -0.5, yScale: 0.28, color: COL_WARM,   opacity: 0.18 },
-      { r: 4.9, tilt: 0.6,  yScale: 0.25, color: COL_TEAL,   opacity: 0.14 },
-      { r: 5.6, tilt: -0.7, yScale: 0.22, color: COL_VIOLET, opacity: 0.10 },
-    ];
-
-    ringConfigs.forEach(cfg => {
-      const segments = 96;
-      const points = [];
-      for (let i = 0; i <= segments; i++) {
-        const angle = (i / segments) * Math.PI * 2;
-        const x = Math.cos(angle) * cfg.r;
-        const y = Math.sin(angle * 0.7 + cfg.tilt) * cfg.r * cfg.yScale;
-        const z = Math.sin(angle) * cfg.r * 0.6;
-        points.push(new THREE.Vector3(x, y, z));
-      }
-
-      const ringGeo = new THREE.BufferGeometry().setFromPoints(points);
-      const ringMat = new THREE.LineBasicMaterial({
-        color: cfg.color,
-        transparent: true,
-        opacity: cfg.opacity,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      const ring = new THREE.Line(ringGeo, ringMat);
-      sceneGroup.add(ring);
     });
   }
 
@@ -425,8 +432,8 @@
       const d = orb.userData;
       const angle = t * d.speed + d.phase + scrollRot * 0.2;
       orb.position.x = Math.cos(angle) * d.r;
-      orb.position.y = Math.sin(angle * 0.7 + d.tilt) * d.r * (d.yScale || 0.35);
-      orb.position.z = Math.sin(angle) * d.r * 0.6;
+      orb.position.z = Math.sin(angle) * d.r;
+      orb.position.y = 0;
     });
 
     // Slow particle drift
